@@ -168,4 +168,4 @@ default_output_path.txt
 *.mkv
 *.avi
 
-log.txt
+log*.txt
