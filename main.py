@@ -106,7 +106,7 @@ def download_subtitle(m3u8_obj, url, output_file):
 def write_video(input_file, output_file, total_duration):
     ffmpeg_start_time = time.time()
 
-    # create file if doesn't exist
+    # create file if it doesn't exist
     if not os.path.exists(ffmpeg_log_filepath):
         open(ffmpeg_log_filepath, 'w').close()
 
@@ -155,7 +155,7 @@ def print_and_log(message, time_taken=None):
     print(message)
     print(os.linesep)
 
-    # create file if doesn't exist
+    # create file if it doesn't exist
     if not os.path.exists(std_log_filepath):
         open(std_log_filepath, 'w').close()
 
