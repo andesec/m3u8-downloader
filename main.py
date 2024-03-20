@@ -9,6 +9,7 @@ import argparse
 
 from urllib.parse import urljoin
 from datetime import datetime
+from tqdm import tqdm
 
 
 def download_m3u8_video(url, output_file, playlist_index):
@@ -47,11 +48,9 @@ def download_m3u8_video(url, output_file, playlist_index):
 
 
 def download_segments(m3u8_segments, url, temp_dir):
-    counter = 1
     segments = []
 
-    for segment in m3u8_segments:
-
+    for segment in tqdm(m3u8_segments, desc="Downloading segments", unit="segment"):
         segment_url = urljoin(url, segment.uri)
         response = requests.get(segment_url, stream=True)
 
@@ -65,9 +64,7 @@ def download_segments(m3u8_segments, url, temp_dir):
         with open(segment_file, 'wb') as f:
             f.write(response.content)
 
-        counter += 1
-
-    print_and_log(f"Number of segments downloaded: {counter}")
+    print_and_log(f"Number of segments downloaded: {len(segments)}")
     return segments
 
 
@@ -97,7 +94,7 @@ def download_subtitle(m3u8_obj, url, output_file):
 
 
 def write_video(list_file, output_file):
-    import subprocess
+    # import subprocess
 
     ffmpeg_start_time = time.time()
 
@@ -108,16 +105,41 @@ def write_video(list_file, output_file):
 
     # Combine all the segments into a single video file
     # ffmpeg.input(list_file, format='concat', safe=0).output(output_file).run()
-    ffmpeg.input(list_file, format='concat', safe=0).output(output_file, analyzeduration=5000000,
-                                                            probesize=5000000).run()
+    # ffmpeg.input(list_file, format='concat', safe=0).output(output_file, analyzeduration=5000000, probesize=5000000).run()
+    run_ffmpeg(list_file, output_file)
 
     ffmpeg_end_time = time.time()
     print_and_log("Time taken for ffmpeg to process: {}", ffmpeg_end_time - ffmpeg_start_time)
 
 
-def print_and_log(message, time=None):
-    if time is not None:
-        minutes, seconds = divmod(time, 60)
+def run_ffmpeg(input_file, output_file):
+    import subprocess
+    import re
+
+    # Get the duration of the input file
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1",
+         input_file], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    duration = float(result.stdout)
+
+    # Run FFmpeg and parse its output
+    process = subprocess.Popen(["ffmpeg", "-i", input_file, output_file], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, universal_newlines=True)
+    progress_bar = tqdm(total=duration, unit='s', ncols=70, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}')
+
+    for line in process.stdout:
+        # Update the progress bar
+        match = re.search(r"time=(\d+:\d+:\d+\.\d+)", line)
+        if match is not None:
+            time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(match.group(1).split(":"))))
+            progress_bar.update(time - progress_bar.n)
+
+    progress_bar.close()
+
+
+def print_and_log(message, time_taken=None):
+    if time_taken is not None:
+        minutes, seconds = divmod(time_taken, 60)
         readable_time = f"{int(minutes)} minutes and {int(seconds)} seconds"
         message = message.format(readable_time)
 
@@ -126,7 +148,6 @@ def print_and_log(message, time=None):
 
     with open('log.txt', 'a') as log_file:
         log_file.write(message)
-        log_file.write(os.linesep)
         log_file.write(os.linesep)
 
 
