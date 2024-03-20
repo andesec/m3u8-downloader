@@ -189,8 +189,7 @@ def parse_args():
     parser.add_argument('--output_dir', help='The directory where the output file should be saved.')
     parser.add_argument('--playlist_index', type=int, default=0, help='The index of the playlist to use.')
     parser.add_argument('--output-extension', type=str, default='mp4', help='The extension or format for this video.')
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def setup_directories(args, selected_csv_filepath):
