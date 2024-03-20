@@ -57,10 +57,21 @@ def download_m3u8_video(url, output_file, playlist_index, is_quality_check_only)
 def download_segments(m3u8_segments, url, temp_dir, is_quality_check_only):
     segments = []
     total_duration = 0
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+        "Referer": "https://vidplay.online/",
+        "Connection": "keep-alive",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Sec-Fetch-Dest": "video",
+        "Sec-Fetch-Mode": "no-cors",
+        "Sec-Fetch-Site": "cross-site",
+    }
 
     for segment in tqdm(m3u8_segments, desc="Downloading segments", unit="segment"):
         segment_url = urljoin(url, segment.uri)
-        response = requests.get(segment_url, stream=True)
+        response = requests.get(segment_url, stream=True, headers=headers)
 
         if response.status_code != 200:
             print_and_log(f"Failed to download segment: {segment_url}")
@@ -73,6 +84,10 @@ def download_segments(m3u8_segments, url, temp_dir, is_quality_check_only):
 
         with open(segment_file, 'wb') as segment_file_pointer:
             segment_file_pointer.write(response.content)
+
+        # A tricky way to prevent the server from blocking requests
+        if len(segments) % 2 == 0:
+            time.sleep(1)  # Wait for 1 second before downloading the next segment
 
         # Break because we only want a sample for testing
         if total_duration > 300 and is_quality_check_only is True:
