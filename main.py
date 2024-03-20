@@ -14,7 +14,7 @@ from datetime import datetime
 from tqdm import tqdm
 
 
-def download_m3u8_video(url, output_file, playlist_index):
+def download_m3u8_video(url, output_file, playlist_index, is_quality_check_only):
     # Parse the m3u8 file
     m3u8_obj = m3u8.load(url)
 
@@ -35,7 +35,8 @@ def download_m3u8_video(url, output_file, playlist_index):
         segments, total_duration = download_segments(
             m3u8_playlist_segments,
             playlist_url if m3u8_obj.is_variant else url,
-            temp_dir
+            temp_dir,
+            is_quality_check_only
         )
 
         # Create a text file listing the segments
@@ -53,7 +54,7 @@ def download_m3u8_video(url, output_file, playlist_index):
         write_video(list_file, output_file, total_duration)
 
 
-def download_segments(m3u8_segments, url, temp_dir):
+def download_segments(m3u8_segments, url, temp_dir, is_quality_check_only):
     segments = []
     total_duration = 0
 
@@ -72,6 +73,10 @@ def download_segments(m3u8_segments, url, temp_dir):
 
         with open(segment_file, 'wb') as segment_file_pointer:
             segment_file_pointer.write(response.content)
+
+        # Break because we only want a sample for testing
+        if total_duration > 300 and is_quality_check_only is True:
+            break
 
     print_and_log(f"Number of segments downloaded: {len(segments)}")
     print_and_log("Total duration is {}", total_duration)
@@ -189,6 +194,7 @@ def parse_args():
     parser.add_argument('--output_dir', help='The directory where the output file should be saved.')
     parser.add_argument('--playlist_index', type=int, default=0, help='The index of the playlist to use.')
     parser.add_argument('--output-extension', type=str, default='mp4', help='The extension or format for this video.')
+    parser.add_argument('--quality-check-only', type=bool, default=False, help='Whether to download full videos or just run a quality check for first file.')
     return parser.parse_args()
 
 
@@ -201,8 +207,14 @@ def setup_directories(args, selected_csv_filepath):
         with open('default_output_path.txt', 'r') as f:
             output_dir = f.read().strip()
 
-    os.makedirs(os.path.join(output_dir, first_part, second_part), exist_ok=True)
-    return os.path.join(output_dir, first_part, second_part)
+    final_output_dir = os.path.join(
+        output_dir, 
+        first_part, 
+        second_part,
+        'sample' if args.quality_check_only is True else ''
+    )
+    os.makedirs(final_output_dir, exist_ok=True)
+    return final_output_dir
 
 
 def select_csv(args):
@@ -223,24 +235,30 @@ def select_csv(args):
 
 
 def process_selected_csv(args, output_dir, csv_filepath):
-    ext = args.output_extension
-    print_and_log(f"Output extension: {ext}")
+    counter = 1
 
     with open(csv_filepath, 'r') as f:
         reader = csv.reader(f)
 
         for row in reader:
+
             if not row or len(row) < 2 or not row[0] or not row[1]:
                 print_and_log(f"Invalid row: {row}")
                 continue
 
-            output_filename = os.path.join(output_dir, f"{row[0]}.{ext}")
+            output_filename = os.path.join(output_dir, f"{row[0]}.{args.output_extension}")
             print_and_log(f"Downloading {row[0]} video to: {output_filename}")
             m3u8_url = row[1]
+
+            # check if the output_filename already exists with extension mp4 or mkv, if yes then skip:
+            if os.path.exists(output_filename) or os.path.exists(output_filename.replace('.mkv', '.mp4')) or os.path.exists(output_filename.replace('.mp4', '.mkv')):
+                print_and_log(f"File already exists: {output_filename}")
+                continue
+
             start_time = time.time()
 
             try:
-                download_m3u8_video(m3u8_url, output_filename, args.playlist_index)
+                download_m3u8_video(m3u8_url, output_filename, args.playlist_index, args.quality_check_only)
             except Exception as e:
                 print_and_log(f"Failed to download video {row[0]}: {e}")
                 continue
@@ -248,6 +266,11 @@ def process_selected_csv(args, output_dir, csv_filepath):
             end_time = time.time()
             print_and_log("Time taken to download and process: {}", end_time - start_time)
             print_and_log("----------------------------------------------------")
+
+            counter += 1
+            
+            if args.quality_check_only is True and counter == 2:
+                break
 
 
 if __name__ == "__main__":
@@ -261,6 +284,9 @@ if __name__ == "__main__":
     print_and_log(f"Playlist index: {args.playlist_index}")
     print_and_log(f"Standard log file: {std_log_filepath}")
     print_and_log(f"FFmpeg log file: {ffmpeg_log_filepath}")
+    print_and_log(f"Output extension: {args.output_extension}")
+    print_and_log(f"Quality check only --: {args.quality_check_only} --")
+    print_and_log("----------------------------------------------------")
 
     process_selected_csv(args, output_dir, selected_csv_filepath)
     print_and_log("Videos downloaded successfully!")
