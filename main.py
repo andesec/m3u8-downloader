@@ -41,7 +41,7 @@ def download_m3u8_video(url, output_file, playlist_index):
         download_subtitle(m3u8_obj, url, output_file)
 
         download_end_time = time.time()
-        print_and_log(f"Time taken to download segments: {download_end_time - download_start_time} seconds")
+        print_and_log("Time taken to download segments: {}", download_end_time - download_start_time)
 
         write_video(list_file, output_file)
 
@@ -72,6 +72,10 @@ def download_segments(m3u8_segments, url, temp_dir):
 
 
 def download_subtitle(m3u8_obj, url, output_file):
+    if not m3u8_obj.media:
+        print_and_log("No subtitle streams found")
+        return
+
     # Download subtitle streams
     subtitles = []
 
@@ -103,24 +107,35 @@ def write_video(list_file, output_file):
     #     subprocess.run(command, stdout=f, stderr=f)
 
     # Combine all the segments into a single video file
-    ffmpeg.input(list_file, format='concat', safe=0).output(output_file).run()
+    # ffmpeg.input(list_file, format='concat', safe=0).output(output_file).run()
+    ffmpeg.input(list_file, format='concat', safe=0).output(output_file, analyzeduration=5000000,
+                                                            probesize=5000000).run()
 
     ffmpeg_end_time = time.time()
-    print_and_log(f"Time taken for ffmpeg to process: {ffmpeg_end_time - ffmpeg_start_time} seconds")
+    print_and_log("Time taken for ffmpeg to process: {}", ffmpeg_end_time - ffmpeg_start_time)
 
 
-def print_and_log(message):
+def print_and_log(message, time=None):
+    if time is not None:
+        minutes, seconds = divmod(time, 60)
+        readable_time = f"{int(minutes)} minutes and {int(seconds)} seconds"
+        message = message.format(readable_time)
+
     print(message)
     print(os.linesep)
 
-    log_file = open('log.txt', 'a')
-    log_file.write(message + os.linesep)
+    with open('log.txt', 'a') as log_file:
+        log_file.write(message)
+        log_file.write(os.linesep)
+        log_file.write(os.linesep)
 
 
 if __name__ == "__main__":
     # Set up command-line argument parsing
     parser = argparse.ArgumentParser(description='Download videos from a CSV file.')
     parser.add_argument('csv_filepath', help='The filepath of the CSV file.')
+    parser.add_argument('--output_dir', help='The directory where the output file should be saved.')
+    parser.add_argument('--playlist_index', type=int, default=0, help='The index of the playlist to use.')
 
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -131,12 +146,20 @@ if __name__ == "__main__":
     # Parse the CSV filename and create necessary directories
     filename = os.path.basename(csv_filepath)
     first_part, second_part, *_ = filename.split('-')
-    os.makedirs(os.path.join(first_part, second_part), exist_ok=True)
 
-    print_and_log(f"Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    output_dir = args.output_dir
+    if output_dir is None:
+        with open('default_output_path.txt', 'r') as f:
+            output_dir = f.read().strip()
+
+    # Ensure the output directory exists
+    # os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(os.path.join(output_dir, first_part, second_part), exist_ok=True)
+
+    print_and_log(f"Current date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     # Parse the CSV file and download the videos
-    with open(csv_filepath, 'r') as f:
+    with open(f"csv/{csv_filepath}", 'r') as f:
         reader = csv.reader(f)
         for row in reader:
             # Skip any row that doesn't have value in first or second column
@@ -145,20 +168,23 @@ if __name__ == "__main__":
                 continue
 
             # Create the output filepath
-            output_filename = os.path.join(first_part, second_part, f"{row[0]}.mp4")
-            print_and_log(f"Downloading video to: {output_filename}")
+            output_filename = os.path.join(output_dir, first_part, second_part, f"{row[0]}.mp4")
+            print_and_log(f"Downloading {row[0]} video to: {output_filename}")
 
             # Get the m3u8 URL
             m3u8_url = row[1]
 
-            print_and_log(f"Downloading {row[0]}")
-
             # Download the video and save it to the output file
             start_time = time.time()
 
-            download_m3u8_video(m3u8_url, output_filename, 0)  # Change the last parameter to select the playlist
+            try:
+                download_m3u8_video(m3u8_url, output_filename,
+                                    args.playlist_index)  # Change the last parameter to select the playlist
+            except Exception as e:
+                print_and_log(f"Failed to download video {row[0]}: {e}")
+                continue
 
             end_time = time.time()
-            print_and_log(f"Time taken to download and process: {end_time - start_time} seconds")
+            print_and_log("Time taken to download and process: {}", end_time - start_time)
 
     print_and_log("Videos downloaded successfully!")

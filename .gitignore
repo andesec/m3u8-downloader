@@ -162,3 +162,10 @@ cython_debug/
 *.csv
 .DS_Store
 .idea/
+
+default_output_path.txt
+*.mp4
+*.mkv
+*.avi
+
+log.txt
