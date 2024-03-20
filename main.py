@@ -105,24 +105,32 @@ def download_subtitle(m3u8_obj, url, output_file):
 def write_video(input_file, output_file, total_duration):
     ffmpeg_start_time = time.time()
 
-    # Run FFmpeg and parse its output
-    process = subprocess.Popen(
-        ["ffmpeg", "-f", "concat", "-safe", "0", "-i", input_file, "-c", "copy", output_file],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True
-    )
+    # create file if doesn't exist
+    if not os.path.exists(ffmpeg_log_filepath):
+        open(ffmpeg_log_filepath, 'w').close()
 
-    progress_bar = tqdm(total=total_duration, unit='s', ncols=70, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}')
+    with open(ffmpeg_log_filepath, 'w') as log_file:
+        process = subprocess.Popen(
+            ["ffmpeg", "-f", "concat", "-safe", "0", "-i", input_file, "-c", "copy", output_file],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True
+        )
 
-    for line in process.stdout:
-        # Update the progress bar
-        match = re.search(r"time=(\d+:\d+:\d+\.\d+)", line)
-        if match is not None:
-            process_time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(match.group(1).split(":"))))
-            progress_bar.update(process_time - progress_bar.n)
+        progress_bar = tqdm(total=total_duration, unit='s', ncols=70, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}')
 
-    progress_bar.close()
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                log_file.write(output)
+                match = re.search(r"time=(\d+:\d+:\d+\.\d+)", output)
+                if match is not None:
+                    process_time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(match.group(1).split(":"))))
+                    progress_bar.update(process_time - progress_bar.n)
+
+        progress_bar.close()
 
     ffmpeg_end_time = time.time()
     print_and_log("Time taken for ffmpeg to process: {}", ffmpeg_end_time - ffmpeg_start_time)
@@ -137,13 +145,32 @@ def print_and_log(message, time_taken=None):
     print(message)
     print(os.linesep)
 
-    with open(log_filepath, 'a') as log_file:
+    # create file if doesn't exist
+    if not os.path.exists(std_log_filepath):
+        open(std_log_filepath, 'w').close()
+
+    with open(std_log_filepath, 'a') as log_file:
         log_file.write(message)
         log_file.write("\n")
         log_file.write("\n")
 
 
-log_filepath = "log_{}".format(time.time())
+std_log_filepath = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    'logs',
+    f"process_{datetime.now().strftime('%Y%m%d_%H_%M_%S')}.log"
+)
+
+ffmpeg_log_filepath = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    'logs',
+    f"ffmpeg_{datetime.now().strftime('%Y%m%d_%H_%M_%S')}.log"
+)
+
+csv_dir_path = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    'csv'
+)
 
 if __name__ == "__main__":
     # Set up command-line argument parsing
@@ -173,7 +200,13 @@ if __name__ == "__main__":
     # os.makedirs(output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, first_part, second_part), exist_ok=True)
 
-    print_and_log(f"Current date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print_and_log(f"Process started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print_and_log(f"CSV file: {csv_filepath}")
+    print_and_log(f"Output directory: {output_dir}")
+    print_and_log(f"Playlist index: {args.playlist_index}")
+    print_and_log(f"Output extension: {ext}")
+    print_and_log(f"Standard log file: {std_log_filepath}")
+    print_and_log(f"FFmpeg log file: {ffmpeg_log_filepath}")
 
     # Parse the CSV file and download the videos
     with open(f"csv/{csv_filepath}", 'r') as f:
@@ -208,3 +241,4 @@ if __name__ == "__main__":
             print_and_log("Time taken to download and process: {}", end_time - start_time)
 
     print_and_log("Videos downloaded successfully!")
+    print_and_log(f"Process ended at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
