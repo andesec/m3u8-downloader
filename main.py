@@ -110,7 +110,7 @@ def write_video(input_file, output_file, total_duration):
     if not os.path.exists(ffmpeg_log_filepath):
         open(ffmpeg_log_filepath, 'w').close()
 
-    with open(ffmpeg_log_filepath, 'w') as log_file:
+    with open(ffmpeg_log_filepath, 'a') as log_file:
         process = subprocess.Popen(
             [
                 "ffmpeg",
