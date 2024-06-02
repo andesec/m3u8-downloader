@@ -14,7 +14,7 @@ from datetime import datetime
 from tqdm import tqdm
 
 
-def download_m3u8_video(url, output_file, playlist_index, is_quality_check_only, is_sleep_disabled):
+def download_m3u8_video(url, output_file, playlist_index, subtitle_link, is_quality_check_only, is_sleep_disabled):
     # Parse the m3u8 file
     m3u8_obj = m3u8.load(url)
 
@@ -47,7 +47,7 @@ def download_m3u8_video(url, output_file, playlist_index, is_quality_check_only,
             for segment in segments:
                 f.write(f"file '{segment}'\n")
 
-        download_subtitle(m3u8_obj, url, output_file)
+        download_subtitle(m3u8_obj, url, output_file, subtitle_link)
 
         download_end_time = time.time()
         print_and_log("Time taken to download segments: {}", download_end_time - download_start_time)
@@ -100,29 +100,46 @@ def download_segments(m3u8_segments, url, temp_dir, is_quality_check_only, is_sl
     return segments, total_duration
 
 
-def download_subtitle(m3u8_obj, url, output_file):
-    if not m3u8_obj.media:
-        print_and_log("No subtitle streams found")
-        return
+def download_subtitle(m3u8_obj, url, output_file, subtitle_link):
+    if subtitle_link:
+        print_and_log("Subtitle link provided, attempting to download")
 
-    # Download subtitle streams
-    subtitles = []
+        response = requests.get(subtitle_link, stream=True)
 
-    for media in m3u8_obj.media:
+        if response.status_code != 200:
+            print_and_log(f"Failed to download subtitle: {subtitle_link}")
 
-        if media.type == 'SUBTITLES':
-            subtitle_url = urljoin(url, media.uri)
-            response = requests.get(subtitle_url, stream=True)
+        # download subtitles from link
+        subtitle_file = os.path.join(os.path.dirname(output_file), output_file + '.srt')
 
-            if response.status_code != 200:
-                print_and_log(f"Failed to download subtitle: {subtitle_url}")
-                continue
+        with open(subtitle_file, 'wb') as f:
+            f.write(response.content)
 
-            subtitle_file = os.path.join(os.path.dirname(output_file), media.uri.split('/')[-1])
-            subtitles.append(subtitle_file)
+    else:
+        print_and_log("No subtitle link provided, checking m3u8 media")
 
-            with open(subtitle_file, 'wb') as f:
-                f.write(response.content)
+        if not m3u8_obj.media:
+            print_and_log("No subtitle streams found")
+            return
+    
+        # Download subtitle streams
+        subtitles = []
+
+        for media in m3u8_obj.media:
+
+            if media.type == 'SUBTITLES':
+                subtitle_url = urljoin(url, media.uri)
+                response = requests.get(subtitle_url, stream=True)
+
+                if response.status_code != 200:
+                    print_and_log(f"Failed to download subtitle: {subtitle_url}")
+                    continue
+
+                subtitle_file = os.path.join(os.path.dirname(output_file), media.uri.split('/')[-1])
+                subtitles.append(subtitle_file)
+
+                with open(subtitle_file, 'wb') as f:
+                    f.write(response.content)
 
 
 def write_video(input_file, output_file, total_duration):
@@ -271,6 +288,12 @@ def process_selected_csv(args, output_dir, csv_filepath):
             print_and_log(f"Downloading {row[0]} video to: {output_filename}")
             m3u8_url = row[1]
 
+            # check if column 3 exists for subtitles
+            if len(row) > 2 and row[2]:
+                subtitle_link = row[2]
+            else:
+                subtitle_link = None
+
             # check if the output_filename already exists with extension mp4 or mkv, if yes then skip:
             if os.path.exists(output_filename) or os.path.exists(
                     output_filename.replace('.mkv', '.mp4')) or os.path.exists(output_filename.replace('.mp4', '.mkv')):
@@ -280,8 +303,14 @@ def process_selected_csv(args, output_dir, csv_filepath):
             start_time = time.time()
 
             try:
-                download_m3u8_video(m3u8_url, output_filename, args.playlist_index, args.quality_check_only,
-                                    args.skip_sleep)
+                download_m3u8_video(
+                    m3u8_url,
+                    output_filename,
+                    args.playlist_index,
+                    subtitle_link,
+                    args.quality_check_only,
+                    args.skip_sleep
+                )
             except Exception as e:
                 print_and_log(f"Failed to download video {row[0]}: {e}")
                 continue
