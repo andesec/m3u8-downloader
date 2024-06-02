@@ -14,7 +14,7 @@ from datetime import datetime
 from tqdm import tqdm
 
 
-def download_m3u8_video(url, output_file, playlist_index, is_quality_check_only):
+def download_m3u8_video(url, output_file, playlist_index, is_quality_check_only, is_sleep_disabled):
     # Parse the m3u8 file
     m3u8_obj = m3u8.load(url)
 
@@ -36,7 +36,8 @@ def download_m3u8_video(url, output_file, playlist_index, is_quality_check_only)
             m3u8_playlist_segments,
             playlist_url if m3u8_obj.is_variant else url,
             temp_dir,
-            is_quality_check_only
+            is_quality_check_only,
+            is_sleep_disabled
         )
 
         # Create a text file listing the segments
@@ -54,11 +55,12 @@ def download_m3u8_video(url, output_file, playlist_index, is_quality_check_only)
         write_video(list_file, output_file, total_duration)
 
 
-def download_segments(m3u8_segments, url, temp_dir, is_quality_check_only):
+def download_segments(m3u8_segments, url, temp_dir, is_quality_check_only, is_sleep_disabled):
     segments = []
     total_duration = 0
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/58.0.3029.110 Safari/537.3",
         "Referer": "https://vidplay.online/",
         "Connection": "keep-alive",
         "Accept-Language": "en-US,en;q=0.9",
@@ -86,7 +88,7 @@ def download_segments(m3u8_segments, url, temp_dir, is_quality_check_only):
             segment_file_pointer.write(response.content)
 
         # A tricky way to prevent the server from blocking requests
-        if len(segments) % 2 == 0:
+        if len(segments) % 2 == 0 and is_sleep_disabled is False:
             time.sleep(1)  # Wait for 1 second before downloading the next segment
 
         # Break because we only want a sample for testing
@@ -208,8 +210,12 @@ def parse_args():
     parser.add_argument('--csv_filepath', help='The filepath of the CSV file.')
     parser.add_argument('--output_dir', help='The directory where the output file should be saved.')
     parser.add_argument('--playlist_index', type=int, default=0, help='The index of the playlist to use.')
-    parser.add_argument('--output-extension', type=str, default='mp4', help='The extension or format for this video.')
-    parser.add_argument('--quality-check-only', type=bool, default=False, help='Whether to download full videos or just run a quality check for first file.')
+    parser.add_argument('--output-extension', type=str, default='mp4',
+                        help='The extension or format for this video.')
+    parser.add_argument('--quality-check-only', type=bool, default=False,
+                        help='Whether to download full videos or just run a quality check for first file.')
+    parser.add_argument('--skip-sleep', type=bool, default=False,
+                        help='Keep downloading segments without waiting, this might cause the server to block you.')
     return parser.parse_args()
 
 
@@ -223,8 +229,8 @@ def setup_directories(args, selected_csv_filepath):
             output_dir = f.read().strip()
 
     final_output_dir = os.path.join(
-        output_dir, 
-        first_part, 
+        output_dir,
+        first_part,
         second_part,
         'sample' if args.quality_check_only is True else ''
     )
@@ -266,14 +272,16 @@ def process_selected_csv(args, output_dir, csv_filepath):
             m3u8_url = row[1]
 
             # check if the output_filename already exists with extension mp4 or mkv, if yes then skip:
-            if os.path.exists(output_filename) or os.path.exists(output_filename.replace('.mkv', '.mp4')) or os.path.exists(output_filename.replace('.mp4', '.mkv')):
+            if os.path.exists(output_filename) or os.path.exists(
+                    output_filename.replace('.mkv', '.mp4')) or os.path.exists(output_filename.replace('.mp4', '.mkv')):
                 print_and_log(f"File already exists: {output_filename}")
                 continue
 
             start_time = time.time()
 
             try:
-                download_m3u8_video(m3u8_url, output_filename, args.playlist_index, args.quality_check_only)
+                download_m3u8_video(m3u8_url, output_filename, args.playlist_index, args.quality_check_only,
+                                    args.skip_sleep)
             except Exception as e:
                 print_and_log(f"Failed to download video {row[0]}: {e}")
                 continue
@@ -283,7 +291,7 @@ def process_selected_csv(args, output_dir, csv_filepath):
             print_and_log("----------------------------------------------------")
 
             counter += 1
-            
+
             if args.quality_check_only is True and counter == 2:
                 break
 
@@ -300,7 +308,8 @@ if __name__ == "__main__":
     print_and_log(f"Standard log file: {std_log_filepath}")
     print_and_log(f"FFmpeg log file: {ffmpeg_log_filepath}")
     print_and_log(f"Output extension: {args.output_extension}")
-    print_and_log(f"Quality check only --: {args.quality_check_only} --")
+    print_and_log(f"Quality check only: -- {args.quality_check_only} --")
+    print_and_log(f"Skip sleep: -- {args.skip_sleep} --")
     print_and_log("----------------------------------------------------")
 
     process_selected_csv(args, output_dir, selected_csv_filepath)

@@ -1,6 +1,27 @@
 # m3u8-downloader
-pipenv install --system --deploy
+A python based downloader for m3u8 playlists
 
-python3.11 main.py "Revenge-Season 4-10-23.csv"
+Usage:
 
-python3.11 main.py "Mutant X-Season 2-11-22.csv" --output-extension 'mkv'
+Activate the virtual environment
+```commandline
+source venv/bin/activate
+
+# Install the requirements
+pip3 install -r requirements.txt
+```
+
+Markdown list:
+1. Run using a specific csv file
+```commandline
+python3 main.py "Revenge-Season 4-10-23.csv"
+```
+2. Run and choose the csv from a list
+```commandline
+python3 main.py
+```
+
+Following options are supported:
+```commandline
+--output-extension 'mkv'
+```
